@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_macros.html" import csrf, badge, inr, qty %}
+{% set active = 'quotations' %}
+{#
+  One template, three modes.
+
+  LIST mode (GET /quotations) -> context:
+    quotations   rows: id, quotation_number, rfq_id, rfq_number, rfq_title, vendor_name, total_amount_paise,
+                       delivery_days, status, submitted_at
+                 (a vendor only receives their own rows)
+
+  COMPARE mode (GET /quotations?rfq_id=N, officer/admin/manager) -> context has `compare`:
+    compare.rfq               id, rfq_number, title, deadline
+    compare.items             rows: id, item_name, quantity, unit
+    compare.quotes            rows: id, quotation_number, vendor_name, total_amount_paise, delivery_days, remarks, status,
+                                    prices = { rfq_item_id: {unit: paise, line: paise} }
+    compare.lowest_id         id of the lowest valid bid (or none)
+    compare.lowest_by_item    { rfq_item_id: lowest unit price in paise }  (optional)
+
+  DETAIL mode (GET /quotations/<id>) -> context has `quotation`:
+    quotation   id, quotation_number, rfq_id, rfq_number, rfq_title, rfq_deadline, vendor_name, total_amount_paise,
+                delivery_days, remarks, status, submitted_at
+    lines       rows: rfq_item_id, item_name, description, quantity, unit, unit_price_paise (or none), line_total_paise
+    editable    bool: true only for the owning vendor while status is draft and the RFQ deadline has not passed
+    can_shortlist  bool: officer viewing a submitted quotation
+
+  Forms post to:
+    POST /quotations/<id>/submit     fields: action = draft | submit, delivery_days, remarks, unit_price_<rfq_item_id>
+    POST /quotations/<id>/shortlist
+  Prices are typed in rupees; the server converts to paise and recalculates every total.
+#}
+{% block title %}{% if quotation is defined and quotation %}{{ quotation.quotation_number }}{% elif compare is defined and compare %}Compare quotations{% else %}Quotations{% endif %}{% endblock %}
+
+{% block content %}
+{% set is_officer = current_user.role == 'procurement_officer' %}
+{% set is_vendor = current_user.role == 'vendor' %}
+
+{% if compare is defined and compare %}
+{# ================= COMPARE ================= #}
+<a class="crumb" href="/rfqs/{{ compare.rfq.id }}">&larr; {{ compare.rfq.rfq_number }}</a>
+<div class="page-head">
+  <div>
+    <h1>Compare quotations</h1>
+    <p class="muted">{{ compare.rfq.rfq_number }}: {{ compare.rfq.title }}. Deadline {{ compare.rfq.deadline[:10] }}.</p>
+  </div>
+</div>
+
+{% if compare.quotes %}
+<div class="card flush">
+  <div class="table-wrap">
+    <table class="compare">
+      <thead>
+        <tr>
+          <th>Item</th>
+          {% for q in compare.quotes %}
+          <th class="{% if q.id == compare.lowest_id %}col-best{% endif %}">
+            {{ q.vendor_name }}
+            <span class="cell-sub">{{ q.quotation_number }}</span>
+            {{ badge(q.status) }}
+            {% if q.id == compare.lowest_id %}<br><span class="best-tag">Lowest bid</span>{% endif %}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in compare.items %}
+        <tr>
+          <td><strong>{{ it.item_name }}</strong><span class="cell-sub">{{ qty(it.quantity) }} {{ it.unit }}</span></td>
+          {% for q in compare.quotes %}
+            {% set p = q.prices.get(it.id) %}
+            <td class="{% if p and (compare.lowest_by_item|default({})).get(it.id) == p.unit %}cell-best{% elif q.id == compare.lowest_id %}col-best{% endif %}">
+              {% if p %}{{ inr(p.unit) }}<span class="cell-sub">Line {{ inr(p.line) }}</span>{% else %}-{% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        <tr class="total-row">
+          <td>Total</td>
+          {% for q in compare.quotes %}<td class="{% if q.id == compare.lowest_id %}col-best{% endif %}">{{ inr(q.total_amount_paise) }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Delivery time</td>
+          {% for q in compare.quotes %}<td class="{% if q.id == compare.lowest_id %}col-best{% endif %}">{{ q.delivery_days }} days</td>{% endfor %}
+        </tr>
+        <tr>
+          <td>Remarks</td>
+          {% for q in compare.quotes %}<td class="{% if q.id == compare.lowest_id %}col-best{% endif %}">{{ q.remarks or '-' }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td></td>
+          {% for q in compare.quotes %}
+          <td class="{% if q.id == compare.lowest_id %}col-best{% endif %}">
+            <a class="btn btn-outline btn-sm" href="/quotations/{{ q.id }}">Details</a>
+            {% if is_officer and q.status == 'submitted' %}
+            <form method="post" action="/quotations/{{ q.id }}/shortlist" data-confirm="Shortlist {{ q.vendor_name }} and send it to a manager for approval?">
+              {{ csrf() }}
+              <button class="btn btn-primary btn-sm" type="submit">Shortlist for approval</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="muted" style="margin-top:12px">Green cells mark the lowest unit price for each item. Draft quotations are not shown.</p>
+{% else %}
+<div class="card"><div class="empty"><strong>No submitted quotations yet</strong>Vendors have until {{ compare.rfq.deadline[:10] }} to respond.</div></div>
+{% endif %}
+
+{% elif quotation is defined and quotation %}
+{# ================= DETAIL / VENDOR FORM ================= #}
+<a class="crumb" href="/quotations">&larr; Quotations</a>
+<div class="page-head">
+  <div>
+    <h1>{{ quotation.quotation_number }}</h1>
+    <p class="muted">For <a href="/rfqs/{{ quotation.rfq_id }}">{{ quotation.rfq_number }}: {{ quotation.rfq_title }}</a>{% if not is_vendor %} from {{ quotation.vendor_name }}{% endif %}</p>
+  </div>
+  <div class="page-actions">
+    {{ badge(quotation.status) }}
+    {% if can_shortlist %}
+    <form method="post" action="/quotations/{{ quotation.id }}/shortlist" data-confirm="Shortlist this quotation and send it to a manager for approval?">
+      {{ csrf() }}
+      <button class="btn btn-primary" type="submit">Shortlist for approval</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if is_vendor and not editable and quotation.status == 'draft' %}
+  <div class="alert alert-warn" role="status"><span>The deadline for this RFQ has passed, so this draft can no longer be submitted.</span></div>
+{% endif %}
+
+<form method="post" action="/quotations/{{ quotation.id }}/submit">
+  {{ csrf() }}
+  <div class="card flush">
+    <div class="card-head"><h2>Item pricing</h2>{% if editable %}<span class="muted">Enter your price per unit in rupees</span>{% endif %}</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Item</th><th class="num">Quantity</th><th class="num">Unit price</th><th class="num">Line total</th></tr></thead>
+        <tbody>
+        {% for l in lines %}
+          <tr>
+            <td class="wrap"><strong>{{ l.item_name }}</strong>{% if l.description %}<span class="cell-sub">{{ l.description }}</span>{% endif %}</td>
+            <td class="num">{{ qty(l.quantity) }} {{ l.unit }}</td>
+            <td class="num">
+              {% if editable %}
+                <input class="control price-input" type="number" min="0" step="0.01" inputmode="decimal"
+                  name="unit_price_{{ l.rfq_item_id }}" data-qty="{{ l.quantity }}" data-item="{{ l.rfq_item_id }}"
+                  value="{% if l.unit_price_paise is not none %}{{ '%.2f'|format(l.unit_price_paise / 100) }}{% endif %}"
+                  aria-label="Unit price for {{ l.item_name }}" required>
+              {% else %}{{ inr(l.unit_price_paise) if l.unit_price_paise is not none else '-' }}{% endif %}
+            </td>
+            <td class="num">
+              {% if editable %}<span data-line-total="{{ l.rfq_item_id }}">₹0.00</span>
+              {% else %}{{ inr(l.line_total_paise) if l.line_total_paise is not none else '-' }}{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-body">
+      <div class="totals">
+        <div class="grand"><span>Total</span><span>{% if editable %}<span data-grand-total>₹0.00</span>{% else %}{{ inr(quotation.total_amount_paise) }}{% endif %}</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Delivery and remarks</h2>
+    {% if editable %}
+    <div class="form-grid">
+      <div class="field"><label for="q-days">Delivery time (days)</label><input id="q-days" name="delivery_days" type="number" min="0" step="1" required value="{{ quotation.delivery_days if quotation.delivery_days is not none else '' }}"></div>
+      <div class="field full"><label for="q-remarks">Remarks</label><textarea id="q-remarks" name="remarks" rows="3" placeholder="Payment terms, validity, anything the buyer should know">{{ quotation.remarks or '' }}</textarea></div>
+    </div>
+    <p class="muted" style="margin-bottom:16px">Totals shown here are a preview. ProcureFlow recalculates them when you save.</p>
+    <div class="page-actions">
+      <button class="btn btn-outline" type="submit" name="action" value="draft">Save draft</button>
+      <button class="btn btn-primary" type="submit" name="action" value="submit">Submit quotation</button>
+    </div>
+    {% else %}
+    <dl class="detail-grid">
+      <div><dt>Delivery time</dt><dd>{% if quotation.delivery_days is not none %}{{ quotation.delivery_days }} days{% else %}-{% endif %}</dd></div>
+      <div><dt>Submitted</dt><dd>{{ (quotation.submitted_at or '-')[:16]|replace('T', ' ') }}</dd></div>
+      <div><dt>Remarks</dt><dd>{{ quotation.remarks or '-' }}</dd></div>
+    </dl>
+    {% endif %}
+  </div>
+</form>
+
+{% else %}
+{# ================= LIST ================= #}
+<div class="page-head">
+  <div>
+    <h1>Quotations</h1>
+    <p class="muted">{% if is_vendor %}Your quotations for the RFQs you were invited to.{% else %}Quotations received from vendors. Open an RFQ to compare its bids.{% endif %}</p>
+  </div>
+</div>
+
+<div class="card flush">
+  {% if quotations %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Quotation</th><th>RFQ</th>{% if not is_vendor %}<th>Vendor</th>{% endif %}<th class="num">Total</th><th class="num">Delivery</th><th>Status</th><th class="actions"></th></tr>
+      </thead>
+      <tbody>
+      {% for q in quotations %}
+        <tr>
+          <td><strong>{{ q.quotation_number }}</strong>{% if q.submitted_at %}<span class="cell-sub">{{ q.submitted_at[:10] }}</span>{% endif %}</td>
+          <td class="wrap">{{ q.rfq_number }}<span class="cell-sub">{{ q.rfq_title }}</span></td>
+          {% if not is_vendor %}<td>{{ q.vendor_name }}</td>{% endif %}
+          <td class="num">{{ inr(q.total_amount_paise) if q.total_amount_paise else '-' }}</td>
+          <td class="num">{% if q.delivery_days is not none %}{{ q.delivery_days }} days{% else %}-{% endif %}</td>
+          <td>{{ badge(q.status) }}</td>
+          <td class="actions">
+            <a class="btn btn-outline btn-sm" href="/quotations/{{ q.id }}">{% if is_vendor and q.status == 'draft' %}Edit{% else %}View{% endif %}</a>
+            {% if not is_vendor and q.status != 'draft' %}<a class="btn btn-outline btn-sm" href="/quotations?rfq_id={{ q.rfq_id }}">Compare</a>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>No quotations yet</strong>{% if is_vendor %}When you are invited to an RFQ, your quotation will appear here.{% else %}They will appear once vendors respond to a published RFQ.{% endif %}</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set layout = 'auth' %}
+{% block title %}Log in{% endblock %}
+
+{% block content %}
+<div class="auth">
+  <aside class="auth-side">
+    <a class="brand" href="{{ url_for('home') }}">{{ icon('logo') }} ProcureFlow</a>
+    <div>
+      <h2>Pick up where your procurement left off.</h2>
+      <p>Check pending approvals, compare new quotations and keep purchase orders and invoices moving.</p>
+    </div>
+    <small>&copy; 2026 ProcureFlow</small>
+  </aside>
+
+  <div class="auth-main">
+    <div class="auth-card">
+      <a class="brand auth-mobile-brand" href="{{ url_for('home') }}">{{ icon('logo') }} ProcureFlow</a>
+      <h1>Log in</h1>
+      <p class="sub">Use the email and password your team administrator set up for you.</p>
+      {% if errors.form %}<div class="alert alert-error" role="alert"><span>{{ errors.form }}{% if errors.demo_link %} Not on a team yet? <a href="{{ url_for('request_demo') }}">Request a live demo</a>.{% endif %}</span></div>{% endif %}
+
+      <form method="post" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" value="{{ email }}" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="pw-wrap">
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+            <button class="pw-toggle" type="button" aria-pressed="false">Show</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" name="remember"> Keep me logged in</label>
+        <button class="btn btn-primary btn-lg btn-block" type="submit">Log in</button>
+      </form>
+
+      <p class="auth-foot">Not on a team yet? <a href="{{ url_for('request_demo') }}">Request a live demo</a></p>
+    </div>
+  </div>
+</div>
+{% endblock %}

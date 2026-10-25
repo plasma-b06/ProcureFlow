@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_macros.html" import csrf, badge, inr, qty %}
+{% set active = 'rfqs' %}
+{#
+  One template, two modes.
+
+  LIST mode (GET /rfqs)  -> context:
+    rfqs            rows: id, rfq_number, title, deadline, status, item_count, invited_count, quotation_count
+    status          current status filter ('' for all)
+    active_vendors  rows: id, company_name   (only needed by procurement officers, for the "New RFQ" form)
+    today           'YYYY-MM-DD'
+
+  DETAIL mode (GET /rfqs/<id>)  -> context has `rfq`:
+    rfq               id, rfq_number, title, description, deadline, status, created_by_name, created_at
+    items             rows: item_name, description, quantity, unit
+    invited_vendors   rows: vendor_id, company_name, invite_status, quotation_id, quotation_status, total_amount_paise
+                      (procurement officer / admin only; vendors do not see other vendors)
+    deadline_passed   bool
+    my_quotation      vendors only: dict with id and status, or none
+
+  Forms post to:  POST /rfqs/create (field `action` = draft | publish)    POST /rfqs/<id>/publish
+  /rfqs/create expects parallel lists: item_name[], item_quantity[], item_unit[], item_description[]
+  and vendor_ids[] (checkboxes of vendor ids).
+#}
+{% block title %}{% if rfq is defined and rfq %}{{ rfq.rfq_number }}{% else %}RFQs{% endif %}{% endblock %}
+
+{% block content %}
+{% set is_officer = current_user.role == 'procurement_officer' %}
+{% set is_vendor = current_user.role == 'vendor' %}
+
+{% if rfq is defined and rfq %}
+{# ================= DETAIL ================= #}
+<a class="crumb" href="/rfqs">&larr; All RFQs</a>
+<div class="page-head">
+  <div>
+    <h1>{{ rfq.rfq_number }}: {{ rfq.title }}</h1>
+    <p class="muted">{{ badge(rfq.status) }}</p>
+  </div>
+  <div class="page-actions">
+    {% if not is_vendor and rfq.status != 'draft' %}
+      <a class="btn btn-outline" href="/quotations?rfq_id={{ rfq.id }}">Compare quotations</a>
+    {% endif %}
+    {% if is_officer and rfq.status == 'draft' %}
+      <form method="post" action="/rfqs/{{ rfq.id }}/publish" data-confirm="Publish this RFQ? Invited vendors will be able to quote.">
+        {{ csrf() }}
+        <button class="btn btn-primary" type="submit">Publish RFQ</button>
+      </form>
+    {% endif %}
+    {% if is_vendor and my_quotation %}
+      <a class="btn btn-primary" href="/quotations/{{ my_quotation.id }}">{% if my_quotation.status == 'draft' %}Continue quotation{% else %}View my quotation{% endif %}</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if deadline_passed %}
+  <div class="alert alert-warn" role="status"><span>The deadline has passed, so quotations can no longer be submitted.</span></div>
+{% endif %}
+
+<div class="card">
+  <dl class="detail-grid">
+    <div><dt>Deadline</dt><dd>{{ rfq.deadline[:10] }}</dd></div>
+    <div><dt>Created by</dt><dd>{{ rfq.created_by_name }}</dd></div>
+    <div><dt>Created</dt><dd>{{ (rfq.created_at or '')[:10] }}</dd></div>
+    <div><dt>Items</dt><dd>{{ items|length }}</dd></div>
+  </dl>
+  {% if rfq.description %}<p style="margin-top:16px">{{ rfq.description }}</p>{% endif %}
+</div>
+
+<div class="card flush">
+  <div class="card-head"><h2>Requested items</h2></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Description</th><th class="num">Quantity</th><th>Unit</th></tr></thead>
+      <tbody>
+      {% for it in items %}
+        <tr>
+          <td><strong>{{ it.item_name }}</strong></td>
+          <td class="wrap">{{ it.description or '-' }}</td>
+          <td class="num">{{ qty(it.quantity) }}</td>
+          <td>{{ it.unit }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if not is_vendor %}
+<div class="card flush">
+  <div class="card-head"><h2>Invited vendors</h2></div>
+  {% if invited_vendors %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Vendor</th><th>Invitation</th><th>Quotation</th><th class="num">Total</th><th class="actions"></th></tr></thead>
+      <tbody>
+      {% for v in invited_vendors %}
+        <tr>
+          <td><strong>{{ v.company_name }}</strong></td>
+          <td>{{ badge(v.invite_status) }}</td>
+          <td>{% if v.quotation_status %}{{ badge(v.quotation_status) }}{% else %}<span class="muted">Not started</span>{% endif %}</td>
+          <td class="num">{% if v.total_amount_paise is not none and v.quotation_status %}{{ inr(v.total_amount_paise) }}{% else %}-{% endif %}</td>
+          <td class="actions">{% if v.quotation_id and v.quotation_status != 'draft' %}<a class="btn btn-outline btn-sm" href="/quotations/{{ v.quotation_id }}">View</a>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>No vendors invited</strong>Vendors are chosen when the RFQ is created.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+{# ================= LIST ================= #}
+<div class="page-head">
+  <div>
+    <h1>RFQs</h1>
+    <p class="muted">{% if is_vendor %}Requests you have been invited to quote on.{% else %}Requests for quotation and where each one stands.{% endif %}</p>
+  </div>
+  {% if is_officer %}
+  <div class="page-actions"><button class="btn btn-primary" type="button" data-modal-open="rfq-new">New RFQ</button></div>
+  {% endif %}
+</div>
+
+<form class="filters" method="get" action="/rfqs">
+  <select class="control" name="status" aria-label="Filter by status" data-autosubmit>
+    <option value="">All statuses</option>
+    {% for s in ['draft', 'published', 'closed', 'cancelled'] %}
+      {% if not (is_vendor and s == 'draft') %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s|capitalize }}</option>{% endif %}
+    {% endfor %}
+  </select>
+  {% if status %}<a class="btn btn-outline" href="/rfqs">Clear</a>{% endif %}
+</form>
+
+<div class="card flush">
+  {% if rfqs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>RFQ</th><th>Deadline</th><th>Status</th><th class="num">Items</th>
+        {% if not is_vendor %}<th class="num">Invited</th><th class="num">Quotations</th>{% endif %}<th class="actions"></th></tr>
+      </thead>
+      <tbody>
+      {% for r in rfqs %}
+        <tr>
+          <td class="wrap"><strong>{{ r.rfq_number }}</strong><span class="cell-sub">{{ r.title }}</span></td>
+          <td>{{ r.deadline[:10] }}</td>
+          <td>{{ badge(r.status) }}</td>
+          <td class="num">{{ r.item_count }}</td>
+          {% if not is_vendor %}<td class="num">{{ r.invited_count }}</td><td class="num">{{ r.quotation_count }}</td>{% endif %}
+          <td class="actions"><a class="btn btn-outline btn-sm" href="/rfqs/{{ r.id }}">View</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <strong>No RFQs yet</strong>
+    {% if is_officer %}Create an RFQ to start collecting quotations.{% elif is_vendor %}RFQs you are invited to will show up here.{% else %}Nothing to show.{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if is_officer %}
+<dialog class="modal wide" id="rfq-new" data-open-on-new>
+  <form method="post" action="/rfqs/create">
+    {{ csrf() }}
+    <div class="modal-head"><h2>New RFQ</h2><button class="modal-x" type="button" data-modal-close aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field full"><label for="rfq-title">Title</label><input id="rfq-title" name="title" type="text" required maxlength="200" placeholder="Steel rods and fasteners, Q4"></div>
+        <div class="field"><label for="rfq-deadline">Quotation deadline</label><input id="rfq-deadline" name="deadline" type="date" required min="{{ today }}"></div>
+        <div class="field full"><label for="rfq-desc">Description</label><textarea id="rfq-desc" name="description" rows="2" placeholder="Delivery location, quality requirements, anything vendors should know"></textarea></div>
+      </div>
+
+      <h3 class="card-title" style="margin-top:8px">Items</h3>
+      <div data-rows id="rfq-rows">
+        <div class="item-row">
+          <input class="control" name="item_name[]" type="text" placeholder="Item name" required aria-label="Item name">
+          <input class="control" name="item_quantity[]" type="number" min="0.01" step="any" placeholder="Qty" required aria-label="Quantity">
+          <input class="control" name="item_unit[]" type="text" placeholder="Unit (kg, pcs)" required aria-label="Unit">
+          <button class="row-remove" type="button" data-remove-row aria-label="Remove item">&times;</button>
+          <input class="control" name="item_description[]" type="text" placeholder="Specification (optional)" aria-label="Item specification" style="grid-column: 1 / -1">
+        </div>
+      </div>
+      <template id="rfq-row-tpl">
+        <div class="item-row">
+          <input class="control" name="item_name[]" type="text" placeholder="Item name" required aria-label="Item name">
+          <input class="control" name="item_quantity[]" type="number" min="0.01" step="any" placeholder="Qty" required aria-label="Quantity">
+          <input class="control" name="item_unit[]" type="text" placeholder="Unit (kg, pcs)" required aria-label="Unit">
+          <button class="row-remove" type="button" data-remove-row aria-label="Remove item">&times;</button>
+          <input class="control" name="item_description[]" type="text" placeholder="Specification (optional)" aria-label="Item specification" style="grid-column: 1 / -1">
+        </div>
+      </template>
+      <button class="btn btn-outline btn-sm" type="button" data-add-row="rfq-row-tpl" data-target="rfq-rows">Add another item</button>
+
+      <h3 class="card-title" style="margin-top:20px">Invite vendors</h3>
+      {% if active_vendors %}
+      <div class="checklist">
+        {% for v in active_vendors %}
+          <label><input type="checkbox" name="vendor_ids[]" value="{{ v.id }}"> {{ v.company_name }}</label>
+        {% endfor %}
+      </div>
+      {% else %}
+        <p class="muted">No active vendors yet. <a href="/vendors">Add a vendor</a> first.</p>
+      {% endif %}
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" type="button" data-modal-close>Cancel</button>
+      <button class="btn btn-outline" type="submit" name="action" value="draft">Save draft</button>
+      <button class="btn btn-primary" type="submit" name="action" value="publish">Save and publish</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endif %}
+{% endblock %}

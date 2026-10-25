@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set layout = 'auth' %}
+{% block title %}Request a live demo{% endblock %}
+
+{% block content %}
+<div class="auth demo">
+  <aside class="auth-side">
+    <a class="brand" href="{{ url_for('home') }}">{{ icon('logo') }} ProcureFlow</a>
+    <div>
+      <p class="side-kicker">Ready when you are</p>
+      <h2>Request a demo, see ProcureFlow live.</h2>
+      <p>Tell us about your team and we’ll set up a tailored walkthrough of the full procurement flow.</p>
+    </div>
+    <ul class="side-checks">
+      <li>{{ icon('tick') }}30-minute personalised demo</li>
+      <li>{{ icon('tick') }}Sample dataset to play with</li>
+      <li>{{ icon('tick') }}Pricing tailored to your team size</li>
+    </ul>
+  </aside>
+
+  <div class="auth-main">
+    <div class="auth-card wide">
+      <a class="brand auth-mobile-brand" href="{{ url_for('home') }}">{{ icon('logo') }} ProcureFlow</a>
+      <form method="post" class="demo-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="field {% if errors.name %}has-error{% endif %}">
+          <label for="name">Full name</label>
+          <input id="name" name="name" type="text" autocomplete="name" placeholder="Ridham Patel" value="{{ form.name }}" required autofocus>
+          {% if errors.name %}<div class="field-error">{{ errors.name }}</div>{% endif %}
+        </div>
+
+        <div class="field {% if errors.email %}has-error{% endif %}">
+          <label for="email">Work email</label>
+          <input id="email" name="email" type="email" autocomplete="email" placeholder="you@company.com" value="{{ form.email }}" required>
+          {% if errors.email %}<div class="field-error">{{ errors.email }}</div>{% endif %}
+        </div>
+
+        <div class="field-row">
+          <div class="field {% if errors.company %}has-error{% endif %}">
+            <label for="company">Company</label>
+            <input id="company" name="company" type="text" autocomplete="organization" placeholder="Acme Steel" value="{{ form.company }}" required>
+            {% if errors.company %}<div class="field-error">{{ errors.company }}</div>{% endif %}
+          </div>
+          <div class="field {% if errors.team_size %}has-error{% endif %}">
+            <label for="team_size">Team size</label>
+            <select id="team_size" name="team_size" required>
+              <option value="">Select...</option>
+              {% for size in team_sizes %}
+                <option value="{{ size }}" {% if form.team_size == size %}selected{% endif %}>{{ size }}</option>
+              {% endfor %}
+            </select>
+            {% if errors.team_size %}<div class="field-error">{{ errors.team_size }}</div>{% endif %}
+          </div>
+        </div>
+
+        <div class="field {% if errors.message %}has-error{% endif %}">
+          <label for="message">What problem are you solving? (optional)</label>
+          <textarea id="message" name="message" rows="4" maxlength="1000" placeholder="A few words about your procurement process">{{ form.message }}</textarea>
+          {% if errors.message %}<div class="field-error">{{ errors.message }}</div>{% endif %}
+        </div>
+
+        <button class="btn btn-primary btn-lg btn-block btn-pill" type="submit">Request demo {{ icon('arrow') }}</button>
+        <p class="form-note">No credit card. We respond within one business day.</p>
+      </form>
+
+      <p class="auth-foot">Already on a team? <a href="{{ url_for('login') }}">Log in</a></p>
+    </div>
+  </div>
+</div>
+{% endblock %}

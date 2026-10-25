@@ -1,0 +1,154 @@
+{#
+  ProcureFlow base layout. Every page extends this file.
+
+  Layout is chosen automatically:
+    - signed in            -> "app"    (sidebar + top bar)
+    - signed out           -> "public" (login/demo strip + navbar + footer)
+  A child template can force one with:  {% set layout = 'public' %}  or  {% set layout = 'auth' %}
+    - "auth" is a bare page (no navbar or sidebar), used by login and request-demo.
+  Child templates can also set:  {% set active = 'vendors' %}  to highlight a sidebar link.
+
+  Blocks: title, head, content, scripts
+#}
+{% from "_icons.html" import icon %}
+{% if layout is not defined %}
+  {% set layout = 'app' if current_user.is_authenticated else 'public' %}
+{% endif %}
+{% set ROLE_LABELS = {'admin': 'Admin', 'procurement_officer': 'Procurement officer', 'vendor': 'Vendor', 'manager': 'Manager'} %}
+{% set NAV = [
+  ('dashboard', '/dashboard', 'Dashboard', 'dashboard', ['admin', 'procurement_officer', 'vendor', 'manager']),
+  ('vendors', '/vendors', 'Vendors', 'vendors', ['admin', 'procurement_officer']),
+  ('rfqs', '/rfqs', 'RFQs', 'rfq', ['admin', 'procurement_officer', 'vendor']),
+  ('quotations', '/quotations', 'Quotations', 'compare', ['admin', 'procurement_officer', 'vendor']),
+  ('approvals', '/approvals', 'Approvals', 'approve', ['admin', 'manager']),
+  ('orders', '/orders', 'Purchase orders', 'order', ['admin', 'procurement_officer', 'vendor']),
+  ('invoices', '/invoices', 'Invoices', 'invoice', ['admin', 'procurement_officer', 'vendor'])
+] %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Home{% endblock %} | ProcureFlow</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="layout-{{ layout }}">
+
+{# ---------- flash messages (one macro, used by every layout) ---------- #}
+{% macro flashes() %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        {% set cat = {'danger': 'error', 'warning': 'info', 'message': 'info'}.get(category, category) %}
+        <div class="alert alert-{{ cat }}" role="status">
+          <span>{{ message }}</span>
+          <button class="alert-close" type="button" aria-label="Dismiss">&times;</button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+{% endmacro %}
+
+{# ---------- opening chrome ---------- #}
+{% if layout == 'app' %}
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" href="/dashboard">{{ icon('logo') }}ProcureFlow</a>
+    <nav>
+      {% for key, href, label, ic, roles in NAV if current_user.role in roles %}
+        <a class="side-link {% if (active is defined and active == key) or (active is not defined and request.path.startswith(href)) %}active{% endif %}" href="{{ href }}">{{ icon(ic) }}{{ label }}</a>
+      {% endfor %}
+    </nav>
+  </aside>
+  <div class="sidebar-overlay" data-sidebar-close></div>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="menu-btn" type="button" data-sidebar-toggle aria-label="Open menu" aria-controls="sidebar"><span></span><span></span><span></span></button>
+        <span class="topbar-title">ProcureFlow</span>
+      </div>
+      <div class="dropdown" data-dropdown>
+        <button class="user-btn" type="button" aria-haspopup="true" aria-expanded="false">
+          {{ icon('user') }}<span class="user-name">{{ current_user.name }}</span>
+          <span class="role-tag">{{ ROLE_LABELS.get(current_user.role, current_user.role) }}</span>
+        </button>
+        <div class="dropdown-menu" role="menu">
+          <div class="dropdown-meta"><strong>{{ current_user.team_label }}</strong><br>{{ current_user.email }}</div>
+          <a href="/logout" role="menuitem">{{ icon('logout') }}Log out</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      {{ flashes() }}
+
+{% elif layout == 'public' %}
+<div class="authbar">
+  <div class="container">
+    {% if current_user.is_authenticated %}
+      <span class="hint">Signed in as {{ current_user.name }}.</span>
+      <span><a href="/dashboard">Dashboard</a><span class="sep">|</span><a href="/logout">Log out</a></span>
+    {% else %}
+      <span class="hint">Want your team on ProcureFlow? Book a live demo.</span>
+      <span><a href="/login">Log in</a><span class="sep">|</span><a href="/request-demo">Request live demo</a></span>
+    {% endif %}
+  </div>
+</div>
+
+<nav class="nav">
+  <div class="container">
+    <a class="brand" href="/">{{ icon('logo') }}ProcureFlow</a>
+    <button class="nav-toggle" type="button" aria-label="Toggle menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/#workflow">How it works</a>
+      <a href="/#roles">Roles</a>
+      <a href="/#faq">FAQ</a>
+    </div>
+    <div class="nav-actions">
+      {% if current_user.is_authenticated %}
+        <a class="btn btn-primary" href="/dashboard">Go to dashboard</a>
+      {% else %}
+        <a class="btn btn-outline" href="/login">Log in</a>
+        <a class="btn btn-primary" href="/request-demo">Request live demo</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<main>
+  <div class="container flash-inline">{{ flashes() }}</div>
+
+{% else %}
+<div class="flash-stack">{{ flashes() }}</div>
+<main>
+{% endif %}
+
+{% block content %}{% endblock %}
+
+{# ---------- closing chrome ---------- #}
+{% if layout == 'app' %}
+    </main>
+    <footer class="app-footer">&copy; 2026 ProcureFlow</footer>
+  </div>
+</div>
+
+{% elif layout == 'public' %}
+</main>
+<footer class="footer">
+  <div class="container">
+    <span>&copy; 2026 ProcureFlow</span>
+    <span><a href="/#features">Features</a> &middot; <a href="/#workflow">How it works</a> &middot; <a href="/login">Log in</a> &middot; <a href="/request-demo">Request live demo</a></span>
+  </div>
+</footer>
+
+{% else %}
+</main>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

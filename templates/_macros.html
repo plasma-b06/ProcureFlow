@@ -1,0 +1,40 @@
+{# Shared helpers for page templates. Import with:  {% from "_macros.html" import csrf, badge, inr, qty %} #}
+
+{# Hidden CSRF field. Put inside every <form method="post">. #}
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+{# Status pill. Colour comes from the status word (green = done, amber = waiting, red = problem). #}
+{% macro badge(status) -%}
+{%- set s = (status or '')|lower -%}
+{%- set cls = {
+  'active': 'ok', 'approved': 'ok', 'paid': 'ok', 'published': 'ok', 'issued': 'ok', 'fulfilled': 'ok', 'responded': 'ok',
+  'pending': 'pending', 'pending_approval': 'pending', 'unpaid': 'pending', 'invited': 'pending',
+  'submitted': 'info', 'shortlisted': 'info', 'new': 'info', 'contacted': 'info',
+  'rejected': 'bad', 'overdue': 'bad', 'cancelled': 'bad', 'inactive': 'bad', 'declined': 'bad', 'expired': 'bad',
+  'draft': 'neutral', 'closed': 'neutral'
+}.get(s, 'neutral') -%}
+<span class="badge {{ cls }}">{{ s|replace('_', ' ')|capitalize }}</span>
+{%- endmacro %}
+
+{# Integer paise -> Indian rupee format, e.g. 23840000 -> ₹2,38,400.00 #}
+{% macro inr(paise) -%}
+{%- set p = (paise or 0)|int -%}
+{%- set rupees = (p // 100)|string -%}
+{%- set frac = '%02d'|format(p % 100) -%}
+{%- if rupees|length > 3 -%}
+  {%- set ns = namespace(head=rupees[:-3], parts=[]) -%}
+  {%- for _ in range(6) -%}
+    {%- if ns.head|length > 2 -%}
+      {%- set ns.parts = [ns.head[-2:]] + ns.parts -%}
+      {%- set ns.head = ns.head[:-2] -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- if ns.head -%}{%- set ns.parts = [ns.head] + ns.parts -%}{%- endif -%}
+  ₹{{ ns.parts|join(',') }},{{ rupees[-3:] }}.{{ frac }}
+{%- else -%}
+  ₹{{ rupees }}.{{ frac }}
+{%- endif -%}
+{%- endmacro %}
+
+{# Quantity without a trailing .0 : 10.0 -> 10, 2.5 -> 2.5 #}
+{% macro qty(value) -%}{{ '%g'|format(value|float) }}{%- endmacro %}

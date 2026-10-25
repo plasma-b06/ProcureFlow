@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_macros.html" import csrf, badge %}
+{% set active = 'vendors' %}
+{#
+  Context expected from the route:
+    vendors  rows: id, company_name, contact_person, email, phone, gst_number, address, status
+    q        current search text (string)
+    status   current status filter: '', 'active' or 'inactive'
+  Forms post to:  POST /vendors/add   POST /vendors/<id>/edit   POST /vendors/<id>/deactivate
+#}
+{% block title %}Vendors{% endblock %}
+
+{% block content %}
+{% set can_edit = current_user.role == 'procurement_officer' %}
+<div class="page-head">
+  <div>
+    <h1>Vendors</h1>
+    <p class="muted">Companies you can invite to RFQs.</p>
+  </div>
+  {% if can_edit %}
+  <div class="page-actions">
+    <button class="btn btn-primary" type="button" data-modal-open="vendor-add">Add vendor</button>
+  </div>
+  {% endif %}
+</div>
+
+<form class="filters" method="get" action="/vendors">
+  <input class="control grow" type="search" name="q" value="{{ q|default('') }}" placeholder="Search by company name" aria-label="Search by company name">
+  <select class="control" name="status" aria-label="Filter by status" data-autosubmit>
+    <option value="" {% if not status %}selected{% endif %}>All statuses</option>
+    <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+    <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option>
+  </select>
+  <button class="btn btn-outline" type="submit">Search</button>
+  {% if q or status %}<a class="btn btn-outline" href="/vendors">Clear</a>{% endif %}
+</form>
+
+<div class="card flush">
+  {% if vendors %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Company</th><th>Contact</th><th>Phone</th><th>GST number</th><th>Status</th>{% if can_edit %}<th class="actions">Actions</th>{% endif %}</tr>
+      </thead>
+      <tbody>
+      {% for v in vendors %}
+        <tr>
+          <td class="wrap"><strong>{{ v.company_name }}</strong><span class="cell-sub">{{ v.address or 'No address' }}</span></td>
+          <td>{{ v.contact_person }}<span class="cell-sub">{{ v.email }}</span></td>
+          <td>{{ v.phone or '-' }}</td>
+          <td>{{ v.gst_number or '-' }}</td>
+          <td>{{ badge(v.status) }}</td>
+          {% if can_edit %}
+          <td class="actions">
+            <button class="btn btn-outline btn-sm" type="button" data-modal-open="vendor-edit"
+              data-form-action="/vendors/{{ v.id }}/edit"
+              data-field-company_name="{{ v.company_name }}" data-field-contact_person="{{ v.contact_person }}"
+              data-field-email="{{ v.email }}" data-field-phone="{{ v.phone or '' }}"
+              data-field-gst_number="{{ v.gst_number or '' }}" data-field-address="{{ v.address or '' }}">Edit</button>
+            {% if v.status == 'active' %}
+            <form method="post" action="/vendors/{{ v.id }}/deactivate" data-confirm="Deactivate {{ v.company_name }}? They will no longer be invited to new RFQs.">
+              {{ csrf() }}
+              <button class="btn btn-outline-danger btn-sm" type="submit">Deactivate</button>
+            </form>
+            {% endif %}
+          </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <strong>No vendors found</strong>
+    {% if q or status %}Try a different search or clear the filters.{% else %}Add your first vendor to start inviting them to RFQs.{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if can_edit %}
+{# One form layout, used for both "Add" and "Edit" #}
+{% macro vendor_fields() %}
+  <div class="form-grid">
+    <div class="field full"><label>Company name</label><input name="company_name" type="text" required maxlength="200"></div>
+    <div class="field"><label>Contact person</label><input name="contact_person" type="text" required maxlength="120"></div>
+    <div class="field"><label>Email</label><input name="email" type="email" required maxlength="255"></div>
+    <div class="field"><label>Phone</label><input name="phone" type="tel" maxlength="30"></div>
+    <div class="field"><label>GST number</label><input name="gst_number" type="text" maxlength="15" placeholder="15 characters"></div>
+    <div class="field full"><label>Address</label><textarea name="address" rows="2"></textarea></div>
+  </div>
+{% endmacro %}
+
+<dialog class="modal" id="vendor-add">
+  <form method="post" action="/vendors/add">
+    {{ csrf() }}
+    <div class="modal-head"><h2>Add vendor</h2><button class="modal-x" type="button" data-modal-close aria-label="Close">&times;</button></div>
+    <div class="modal-body">{{ vendor_fields() }}</div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" type="button" data-modal-close>Cancel</button>
+      <button class="btn btn-primary" type="submit">Save vendor</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="vendor-edit">
+  <form method="post" action="">
+    {{ csrf() }}
+    <div class="modal-head"><h2>Edit vendor</h2><button class="modal-x" type="button" data-modal-close aria-label="Close">&times;</button></div>
+    <div class="modal-body">{{ vendor_fields() }}</div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" type="button" data-modal-close>Cancel</button>
+      <button class="btn btn-primary" type="submit">Save changes</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}

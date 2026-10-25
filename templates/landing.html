@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set layout = 'public' %}
+{% block title %}Vendor Management &amp; Procurement{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<header class="hero">
+  <div class="container">
+    <div>
+      <h1>From vendor quote to paid invoice, in one place.</h1>
+      <p class="lead">ProcureFlow keeps vendor registration, RFQs, quotation comparison, approvals, purchase orders and invoices in a single, traceable workflow.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="/request-demo">Request a live demo</a>
+        <a class="btn btn-outline btn-lg" href="/login">Log in</a>
+      </div>
+      <ul class="ticks">
+        <li>{{ icon('tick') }}Side-by-side quotation comparison</li>
+        <li>{{ icon('tick') }}Manager approval before any purchase order</li>
+        <li>{{ icon('tick') }}Every action recorded in an audit log</li>
+      </ul>
+    </div>
+
+    <div class="preview" aria-hidden="true">
+      <div class="preview-head">ProcureFlow / Dashboard</div>
+      <div class="preview-body">
+        <div class="kpis">
+          <div class="kpi"><small>Open RFQs</small><b>12</b></div>
+          <div class="kpi"><small>Pending approvals</small><b>4</b></div>
+          <div class="kpi"><small>Invoices due</small><b>7</b></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>RFQ</th><th>Vendor</th><th>Status</th><th class="num">Total</th></tr></thead>
+            <tbody>
+              <tr><td>RFQ-0007</td><td>Acme Steel</td><td><span class="badge ok">Approved</span></td><td class="num">₹2,38,400</td></tr>
+              <tr><td>RFQ-0006</td><td>Stellar Parts</td><td><span class="badge pending">Pending</span></td><td class="num">₹1,97,800</td></tr>
+              <tr><td>RFQ-0005</td><td>Crestline Mfg</td><td><span class="badge bad">Rejected</span></td><td class="num">₹3,15,000</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Features -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-head">
+      <h2>Replace spreadsheets and email threads</h2>
+      <p class="muted">Each stage of procurement has its own screen, and each stage hands off to the next.</p>
+    </div>
+    <div class="grid grid-3">
+      {% for ic, title, text in [
+        ('vendors', 'Vendor management', 'Register vendors with contact and GST details, search them, and deactivate them when needed.'),
+        ('rfq', 'RFQs', 'List the items you need, set a deadline, and invite the vendors who should quote.'),
+        ('compare', 'Quotation comparison', 'See every vendor’s item prices and delivery time side by side, with the lowest bid highlighted.'),
+        ('approve', 'Approvals', 'Managers approve or reject a shortlisted quote, and a rejection always needs a reason.'),
+        ('order', 'Purchase orders', 'An approved quotation becomes exactly one purchase order, ready to print.'),
+        ('invoice', 'Invoices', 'Create an invoice from a purchase order, apply tax, set a due date and mark it paid.')
+      ] %}
+      <div class="card">
+        <div class="card-icon">{{ icon(ic) }}</div>
+        <h3>{{ title }}</h3>
+        <p>{{ text }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Workflow -->
+<section class="section alt" id="workflow">
+  <div class="container split">
+    <div>
+      <h2>How a purchase moves through ProcureFlow</h2>
+      <p class="muted">Six steps, in order. Nothing skips approval, and every step leaves a record.</p>
+      <a class="btn btn-primary" href="/request-demo">Request a live demo</a>
+    </div>
+    <div>
+      {% for title, text in [
+        ('Create an RFQ', 'The procurement officer lists items, quantities and a deadline.'),
+        ('Invite vendors', 'Publish the RFQ and choose which active vendors can quote.'),
+        ('Collect quotations', 'Vendors submit item-wise prices and delivery time before the deadline.'),
+        ('Compare and shortlist', 'Review bids side by side and send the best one for approval.'),
+        ('Approve', 'A manager approves, or rejects with remarks so another bid can be sent.'),
+        ('Order and invoice', 'The purchase order is generated, then invoiced and tracked until paid.')
+      ] %}
+      <div class="step">
+        <div class="dot">{{ loop.index }}</div>
+        <h3>{{ title }}</h3>
+        <p>{{ text }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Roles -->
+<section class="section" id="roles">
+  <div class="container">
+    <div class="section-head">
+      <h2>Each person sees what they need</h2>
+      <p class="muted">Access is enforced on the server, so a vendor never sees another vendor’s quote.</p>
+    </div>
+    <div class="grid grid-4">
+      {% for ic, name, text in [
+        ('admin', 'Admin', 'Oversees the whole system, users and roles.'),
+        ('officer', 'Procurement officer', 'Runs vendors, RFQs, comparisons, orders and invoices.'),
+        ('vendor', 'Vendor', 'Quotes on invited RFQs and tracks their own orders and invoices.'),
+        ('manager', 'Manager', 'Reviews shortlisted quotes and records the decision.')
+      ] %}
+      <div class="card">
+        <div class="card-icon">{{ icon(ic) }}</div>
+        <h3>{{ name }}</h3>
+        <p>{{ text }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section alt" id="faq">
+  <div class="container faq">
+    <h2>Questions</h2>
+    {% for q, a in [
+      ('How do I get an account?', 'Accounts are created for your team, not by visitors. Request a live demo and we will set up your workspace and invite your people.'),
+      ('Can vendors log in?', 'Yes. A vendor account only shows RFQs the vendor was invited to, and only that vendor’s own quotations, orders and invoices.'),
+      ('Who can approve a purchase?', 'Only managers. Procurement officers cannot approve their own requests.'),
+      ('Can a rejected quote be replaced?', 'Yes. The officer can shortlist another eligible quotation for the same RFQ.'),
+      ('Can an order or invoice be created twice?', 'No. Each approved quotation produces one purchase order, and each purchase order produces one invoice.'),
+      ('How are amounts calculated?', 'Line totals, tax and grand totals are calculated on the server with decimal arithmetic, never taken from the browser.')
+    ] %}
+    <div class="acc-item">
+      <button class="acc-btn" type="button" aria-expanded="false" aria-controls="faq{{ loop.index }}">{{ q }}</button>
+      <div class="acc-panel" id="faq{{ loop.index }}"><p>{{ a }}</p></div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<!-- Closing call to action -->
+<section class="cta">
+  <div class="container">
+    <div>
+      <h2>Run your first RFQ today</h2>
+      <p>Request a live demo and we’ll set up your team, or log in if you already have an account.</p>
+    </div>
+    <div class="btns">
+      <a class="btn btn-light" href="/request-demo">Request live demo</a>
+      <a class="btn btn-ghost-light" href="/login">Log in</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
