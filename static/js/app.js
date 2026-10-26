@@ -82,3 +82,100 @@ document.addEventListener("click", function (e) {
   btn.textContent = show ? "Hide" : "Show";
   btn.setAttribute("aria-pressed", show);
 });
+
+// ---------- Page components ----------
+(function () {
+  // Open / close modals (<dialog>). Extra data attributes prefill the form:
+  //   data-form-action="/vendors/3/edit"   sets the form's action
+  //   data-field-company_name="Acme"       sets the input named company_name
+  document.addEventListener("click", function (e) {
+    var opener = e.target.closest("[data-modal-open]");
+    if (opener) {
+      var dlg = document.getElementById(opener.getAttribute("data-modal-open"));
+      if (!dlg) return;
+      var form = dlg.querySelector("form");
+      if (form) {
+        if (opener.hasAttribute("data-form-action")) form.setAttribute("action", opener.getAttribute("data-form-action"));
+        Array.prototype.forEach.call(opener.attributes, function (attr) {
+          if (attr.name.indexOf("data-field-") !== 0) return;
+          var field = form.elements[attr.name.slice(11)];
+          if (field) field.value = attr.value;
+        });
+      }
+      dlg.showModal();
+      return;
+    }
+    var closer = e.target.closest("[data-modal-close]");
+    if (closer) { closer.closest("dialog").close(); return; }
+    if (e.target.tagName === "DIALOG") e.target.close(); // click on the backdrop
+
+    var print = e.target.closest("[data-print]");
+    if (print) window.print();
+
+    // Repeating rows (RFQ items)
+    var add = e.target.closest("[data-add-row]");
+    if (add) {
+      var tpl = document.getElementById(add.getAttribute("data-add-row"));
+      var box = document.getElementById(add.getAttribute("data-target"));
+      box.appendChild(tpl.content.cloneNode(true));
+      var first = box.lastElementChild.querySelector("input");
+      if (first) first.focus();
+      return;
+    }
+    var rm = e.target.closest("[data-remove-row]");
+    if (rm) {
+      var container = rm.closest("[data-rows]");
+      if (container.children.length > 1) rm.closest(".item-row").remove();
+    }
+  });
+
+  // Confirm dialogs, and stop double submits
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    var msg = form.getAttribute("data-confirm");
+    if (msg && !window.confirm(msg)) { e.preventDefault(); return; }
+    if ((form.method || "").toLowerCase() === "post") {
+      setTimeout(function () {
+        form.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = true; });
+      }, 0);
+    }
+  });
+
+  // Filters that submit when changed
+  document.addEventListener("change", function (e) {
+    var el = e.target.closest("[data-autosubmit]");
+    if (el) el.form.submit();
+  });
+
+  // Live line totals while a vendor types prices (display only; the server recalculates)
+  function rupees(n) {
+    return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function recalc(form) {
+    var grand = 0;
+    form.querySelectorAll("[data-qty]").forEach(function (input) {
+      var line = (parseFloat(input.value) || 0) * parseFloat(input.getAttribute("data-qty"));
+      grand += line;
+      var out = form.querySelector('[data-line-total="' + input.getAttribute("data-item") + '"]');
+      if (out) out.textContent = rupees(line);
+    });
+    var g = form.querySelector("[data-grand-total]");
+    if (g) g.textContent = rupees(grand);
+  }
+  document.addEventListener("input", function (e) {
+    if (e.target.matches("[data-qty]")) recalc(e.target.form);
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("form").forEach(function (f) { if (f.querySelector("[data-qty]")) recalc(f); });
+    // Open a modal straight away when the URL asks for it, e.g. /rfqs?new=1
+    if (new URLSearchParams(location.search).get("new") === "1") {
+      var d = document.querySelector("dialog[data-open-on-new]");
+      if (d) d.showModal();
+    }
+  });
+})();
+
+// Re-enable submit buttons if the page is restored from the back/forward cache
+window.addEventListener("pageshow", function (e) {
+  if (e.persisted) document.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = false; });
+});

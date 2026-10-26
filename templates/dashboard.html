@@ -1,13 +1,279 @@
 {% extends "base.html" %}
+{% from "_macros.html" import badge, inr %}
 {% set active = 'dashboard' %}
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
 <div class="page-head">
-  <h1>Welcome, {{ current_user.name }}</h1>
-  <p class="muted">Signed in as {{ current_user.role }}. The dashboard metrics are coming next.</p>
+  <div>
+    <h1>Welcome, {{ current_user.name }}</h1>
+    <p class="muted">Signed in as {{ current_user.role|replace('_', ' ')|title }}.</p>
+  </div>
 </div>
-<div class="card">
-  <p class="muted" style="margin:0">Nothing to show yet.</p>
+
+{# ---------- Metric cards ---------- #}
+<div class="metric-grid">
+  {% for m in metrics %}
+  <a class="metric-card" href="{{ m.href }}">
+    <span class="metric-label">{{ m.label }}</span>
+    <span class="metric-value">{{ m.value }}</span>
+    {% if m.hint %}<span class="metric-hint">{{ m.hint }}</span>{% endif %}
+  </a>
+  {% endfor %}
 </div>
+
+{# ---------- Role-specific panels ---------- #}
+{% if current_user.role in ('procurement_officer', 'admin', 'manager') %}
+
+  {# Open RFQs needing attention #}
+  <div class="card flush" style="margin-top:1.5rem">
+    <div class="card-head">
+      <h2>Open RFQs</h2>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('rfqs_list') }}">View all</a>
+    </div>
+    {% if open_rfqs %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>RFQ</th>
+            <th>Deadline</th>
+            <th>Status</th>
+            <th class="num">Invited</th>
+            <th class="num">Quotes</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in open_rfqs %}
+          <tr>
+            <td class="wrap">
+              <strong>{{ r.rfq_number }}</strong>
+              <span class="cell-sub">{{ r.title }}</span>
+            </td>
+            <td>{{ r.deadline[:10] }}</td>
+            <td>{{ badge(r.status) }}</td>
+            <td class="num">{{ r.invited_count }}</td>
+            <td class="num">{{ r.quotation_count }}</td>
+            <td class="actions">
+              <a class="btn btn-outline btn-sm" href="{{ url_for('rfq_detail', rid=r.id) }}">View</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><strong>No open RFQs</strong>Create one to start collecting quotations.</div>
+    {% endif %}
+  </div>
+
+  {# Recent submitted quotations #}
+  <div class="card flush" style="margin-top:1.25rem">
+    <div class="card-head">
+      <h2>Recent quotations</h2>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('quotations_list') }}">View all</a>
+    </div>
+    {% if recent_quotes %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Quotation</th>
+            <th>RFQ</th>
+            <th>Vendor</th>
+            <th class="num">Total</th>
+            <th>Status</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for q in recent_quotes %}
+          <tr>
+            <td><strong>{{ q.quotation_number }}</strong></td>
+            <td class="wrap">{{ q.rfq_number }}<span class="cell-sub">{{ q.rfq_title }}</span></td>
+            <td>{{ q.vendor_name }}</td>
+            <td class="num">{{ inr(q.total_amount_paise) }}</td>
+            <td>{{ badge(q.status) }}</td>
+            <td class="actions">
+              <a class="btn btn-outline btn-sm" href="{{ url_for('quotation_detail', qid=q.id) }}">View</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><strong>No quotations yet</strong>They appear once vendors respond to a published RFQ.</div>
+    {% endif %}
+  </div>
+
+  {% if current_user.role in ('manager', 'admin') and pending_approvals %}
+  <div class="card flush" style="margin-top:1.25rem">
+    <div class="card-head"><h2>Pending approvals</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Quotation</th>
+            <th>Vendor</th>
+            <th class="num">Total</th>
+            <th>Requested</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for a in pending_approvals %}
+          <tr>
+            <td><strong>{{ a.quotation_number }}</strong>
+              <span class="cell-sub">{{ a.rfq_number }}</span></td>
+            <td>{{ a.vendor_name }}</td>
+            <td class="num">{{ inr(a.total_amount_paise) }}</td>
+            <td>{{ (a.requested_at or '')[:10] }}</td>
+            <td class="actions">
+              <a class="btn btn-outline btn-sm" href="{{ url_for('quotation_detail', qid=a.quotation_id) }}">Review</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+{% elif current_user.role == 'vendor' %}
+
+  {# Vendor: RFQs I was invited to #}
+  <div class="card flush" style="margin-top:1.5rem">
+    <div class="card-head">
+      <h2>RFQs invited to quote</h2>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('rfqs_list') }}">View all</a>
+    </div>
+    {% if invited_rfqs %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>RFQ</th>
+            <th>Deadline</th>
+            <th>Status</th>
+            <th>My quotation</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in invited_rfqs %}
+          <tr>
+            <td class="wrap">
+              <strong>{{ r.rfq_number }}</strong>
+              <span class="cell-sub">{{ r.title }}</span>
+            </td>
+            <td>{{ r.deadline[:10] }}</td>
+            <td>{{ badge(r.status) }}</td>
+            <td>
+              {% if r.my_status %}
+                {{ badge(r.my_status) }}
+              {% else %}
+                <span class="muted">Not started</span>
+              {% endif %}
+            </td>
+            <td class="actions">
+              <a class="btn btn-outline btn-sm" href="{{ url_for('rfq_detail', rid=r.id) }}">Open</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><strong>No invitations yet</strong>RFQs you are invited to will appear here.</div>
+    {% endif %}
+  </div>
+
+  {# Vendor: my quotations #}
+  <div class="card flush" style="margin-top:1.25rem">
+    <div class="card-head">
+      <h2>My quotations</h2>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('quotations_list') }}">View all</a>
+    </div>
+    {% if my_quotes %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Quotation</th>
+            <th>RFQ</th>
+            <th class="num">Total</th>
+            <th>Status</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for q in my_quotes %}
+          <tr>
+            <td><strong>{{ q.quotation_number }}</strong></td>
+            <td class="wrap">{{ q.rfq_number }}<span class="cell-sub">{{ q.rfq_title }}</span></td>
+            <td class="num">{{ inr(q.total_amount_paise) if q.total_amount_paise else '–' }}</td>
+            <td>{{ badge(q.status) }}</td>
+            <td class="actions">
+              <a class="btn btn-outline btn-sm" href="{{ url_for('quotation_detail', qid=q.id) }}">
+                {% if q.status == 'draft' %}Edit{% else %}View{% endif %}
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><strong>No quotations yet</strong>Start one from an invited RFQ.</div>
+    {% endif %}
+  </div>
+
+{% endif %}
+
+<style>
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: .5rem;
+  }
+  .metric-card {
+    background: var(--card, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    padding: 1rem 1.15rem;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .metric-card:hover {
+    border-color: var(--primary, #2563eb);
+    box-shadow: 0 2px 8px rgba(37,99,235,.12);
+    text-decoration: none;
+  }
+  .metric-label {
+    display: block;
+    font-size: .75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted, #718096);
+    margin-bottom: .35rem;
+  }
+  .metric-value {
+    display: block;
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .metric-hint {
+    display: block;
+    font-size: .8rem;
+    color: var(--muted, #718096);
+    margin-top: .25rem;
+  }
+</style>
 {% endblock %}

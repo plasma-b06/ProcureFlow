@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_macros.html" import csrf, badge, inr, qty %}
+{% set active = 'approvals' %}
+{#
+  Context expected from the route (GET /approvals):
+    pending   rows: id (approval id), quotation_id, quotation_number, rfq_id, rfq_number, rfq_title, vendor_name,
+                    total_amount_paise, delivery_days, requested_at,
+                    lines (optional list: item_name, quantity, unit, unit_price_paise, line_total_paise)
+    history   rows: quotation_number, rfq_number, vendor_name, total_amount_paise, decision, remarks, decided_at, manager_name
+
+  Forms post to:  POST /approvals/<id>/approve    POST /approvals/<id>/reject  (field `remarks` is required for reject)
+  Only managers see the Approve / Reject buttons; the server must enforce this as well.
+#}
+{% block title %}Approvals{% endblock %}
+
+{% block content %}
+{% set is_manager = current_user.role == 'manager' %}
+<div class="page-head">
+  <div>
+    <h1>Approvals</h1>
+    <p class="muted">Shortlisted quotations waiting for a decision, and the decisions already made.</p>
+  </div>
+</div>
+
+<h2 class="card-title">Pending approvals ({{ pending|length }})</h2>
+{% if pending %}
+  {% for a in pending %}
+  <div class="card">
+    <div class="page-head" style="margin-bottom:12px">
+      <div>
+        <strong style="font-size:1.1rem; color:var(--navy)">{{ a.vendor_name }}</strong>
+        <span class="cell-sub">{{ a.quotation_number }} for <a href="/rfqs/{{ a.rfq_id }}">{{ a.rfq_number }}: {{ a.rfq_title }}</a></span>
+      </div>
+      {{ badge('pending') }}
+    </div>
+    <dl class="detail-grid">
+      <div><dt>Quotation total</dt><dd>{{ inr(a.total_amount_paise) }}</dd></div>
+      <div><dt>Delivery time</dt><dd>{{ a.delivery_days }} days</dd></div>
+      <div><dt>Requested</dt><dd>{{ (a.requested_at or '')[:10] }}</dd></div>
+    </dl>
+
+    {% if a.lines %}
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer; color:var(--accent); font-weight:600">View item prices</summary>
+      <div class="table-wrap" style="margin-top:8px">
+        <table>
+          <thead><tr><th>Item</th><th class="num">Quantity</th><th class="num">Unit price</th><th class="num">Line total</th></tr></thead>
+          <tbody>
+          {% for l in a.lines %}
+            <tr><td>{{ l.item_name }}</td><td class="num">{{ qty(l.quantity) }} {{ l.unit }}</td><td class="num">{{ inr(l.unit_price_paise) }}</td><td class="num">{{ inr(l.line_total_paise) }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+
+    <div class="page-actions" style="margin-top:16px">
+      <a class="btn btn-outline btn-sm" href="/quotations/{{ a.quotation_id }}">Open quotation</a>
+      {% if is_manager %}
+      <form method="post" action="/approvals/{{ a.id }}/approve" data-confirm="Approve {{ a.vendor_name }} for {{ a.rfq_number }}? A purchase order will be created.">
+        {{ csrf() }}
+        <button class="btn btn-success btn-sm" type="submit">Approve</button>
+      </form>
+      <button class="btn btn-outline-danger btn-sm" type="button" data-modal-open="reject-dialog"
+        data-form-action="/approvals/{{ a.id }}/reject">Reject</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="card"><div class="empty"><strong>Nothing waiting</strong>Shortlisted quotations will show up here for review.</div></div>
+{% endif %}
+
+<div class="card flush" style="margin-top:28px">
+  <div class="card-head"><h2>Approval history</h2></div>
+  {% if history %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Quotation</th><th>Vendor</th><th class="num">Total</th><th>Decision</th><th>Remarks</th><th>Decided by</th><th>Date</th></tr></thead>
+      <tbody>
+      {% for h in history %}
+        <tr>
+          <td><strong>{{ h.quotation_number }}</strong><span class="cell-sub">{{ h.rfq_number }}</span></td>
+          <td>{{ h.vendor_name }}</td>
+          <td class="num">{{ inr(h.total_amount_paise) }}</td>
+          <td>{{ badge(h.decision) }}</td>
+          <td class="wrap">{{ h.remarks or '-' }}</td>
+          <td>{{ h.manager_name }}</td>
+          <td>{{ (h.decided_at or '')[:16]|replace('T', ' ') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>No decisions yet</strong></div>
+  {% endif %}
+</div>
+
+{% if is_manager %}
+<dialog class="modal" id="reject-dialog">
+  <form method="post" action="">
+    {{ csrf() }}
+    <div class="modal-head"><h2>Reject quotation</h2><button class="modal-x" type="button" data-modal-close aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="reject-remarks">Reason for rejection</label>
+        <textarea id="reject-remarks" name="remarks" rows="4" required placeholder="The procurement officer will see this and can shortlist another quotation."></textarea>
+        <div class="field-hint">Required. Rejecting does not close the RFQ.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" type="button" data-modal-close>Cancel</button>
+      <button class="btn btn-danger" type="submit">Reject quotation</button>
+    </div>
+  </form>
+</dialog>
+{% endif %}
+{% endblock %}
